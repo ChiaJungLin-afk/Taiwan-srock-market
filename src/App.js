@@ -10,7 +10,7 @@ async function fetchTWSEPrice(code) {
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
       const data = await res.json();
       const d = data?.msgArray?.[0];
-      if (!d || d.z === "-" && d.y === "-") continue;
+      if (!d || (d.z === "-" && d.y === "-")) continue;
       const price = parseFloat(d.z) || parseFloat(d.y) || null;
       if (!price) continue;
       return {
