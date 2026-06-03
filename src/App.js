@@ -1,92 +1,18 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 
-// ── TWSE 即時股價 API ────────────────────────────────────────────────
+// ── 股價 API（呼叫自己的 Vercel 後端，解決 CORS 問題）────────────
 async function fetchTWSEPrice(code) {
-  // 1) 先試 TWSE 盤中即時（交易時段）
-  for (const mkt of ["tse", "otc"]) {
-    try {
-      const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${mkt}_${code}.tw&json=1&delay=0&_=${Date.now()}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-      const data = await res.json();
-      const d = data?.msgArray?.[0];
-      if (!d) continue;
-      const price = parseFloat(d.z) || parseFloat(d.y) || null;
-      if (!price) continue;
-      return {
-        code,
-        name: d.n?.trim() || code,
-        price,
-        prev: parseFloat(d.y) || price,
-        open: parseFloat(d.o) || null,
-        high: parseFloat(d.h) || null,
-        low: parseFloat(d.l) || null,
-        vol: parseInt(d.v) || null,
-        time: d.t || null,
-        live: !!parseFloat(d.z),
-        market: mkt,
-      };
-    } catch {}
+  try {
+    const res = await fetch(`/api/stock?code=${code}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error) return null;
+    return { ...data, market: data.source };
+  } catch {
+    return null;
   }
-
-  // 2) 非交易時段 → 改用 Yahoo Finance 收盤價
-  try {
-    const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${code}.TW?interval=1d&range=5d`,
-      { signal: AbortSignal.timeout(6000) }
-    );
-    const data = await res.json();
-    const meta = data?.chart?.result?.[0]?.meta;
-    const quotes = data?.chart?.result?.[0]?.indicators?.quote?.[0];
-    const closes = quotes?.close?.filter(Boolean) || [];
-    if (meta && closes.length >= 2) {
-      const price = closes[closes.length - 1];
-      const prev  = closes[closes.length - 2];
-      return {
-        code,
-        name: meta.shortName || meta.longName || code,
-        price,
-        prev,
-        open: quotes.open?.at(-1) || null,
-        high: quotes.high?.at(-1) || null,
-        low:  quotes.low?.at(-1)  || null,
-        vol:  quotes.volume?.at(-1) || null,
-        time: "收盤價",
-        live: false,
-        market: "yahoo",
-      };
-    }
-  } catch {}
-
-  // 3) 上櫃代碼也試 TWO
-  try {
-    const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${code}.TWO?interval=1d&range=5d`,
-      { signal: AbortSignal.timeout(6000) }
-    );
-    const data = await res.json();
-    const meta = data?.chart?.result?.[0]?.meta;
-    const quotes = data?.chart?.result?.[0]?.indicators?.quote?.[0];
-    const closes = quotes?.close?.filter(Boolean) || [];
-    if (meta && closes.length >= 2) {
-      const price = closes[closes.length - 1];
-      const prev  = closes[closes.length - 2];
-      return {
-        code,
-        name: meta.shortName || meta.longName || code,
-        price,
-        prev,
-        open: quotes.open?.at(-1) || null,
-        high: quotes.high?.at(-1) || null,
-        low:  quotes.low?.at(-1)  || null,
-        vol:  quotes.volume?.at(-1) || null,
-        time: "收盤價",
-        live: false,
-        market: "yahoo",
-      };
-    }
-  } catch {}
-
-  return null;
 }
 
 // Yahoo Finance 歷史收盤（60日，用於技術指標）
